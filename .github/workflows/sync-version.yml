@@ -1,79 +1,55 @@
-name: Sync Version from Master Repo
+name: Sync Version – yii2-froala-editor
 
 on:
   repository_dispatch:
-    types: [sync-version]
+    types: [version_update]
 
 permissions:
   contents: write
   pull-requests: write
 
 jobs:
-  sync_version:
+  sync:
     runs-on: ubuntu-latest
+    environment: PAT
 
     steps:
-
-      - name: Checkout repository
+      - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PAT }}
 
-      - name: Load incoming version
+      - name: Load version
         run: |
           echo "VERSION=${{ github.event.client_payload.version }}" >> $GITHUB_ENV
-          echo "Incoming version: $VERSION"
 
-      - name: Read current version from composer.json
+      - name: Create release branch
         run: |
-          CURRENT=$(jq -r '.version' composer.json)
-          echo "CURRENT_VERSION=$CURRENT" >> $GITHUB_ENV
-          echo "Local version: $CURRENT | Incoming: $VERSION"
-
-      # --------------------------------------------
-      # DECIDE WHETHER TO RUN OR STOP
-      # --------------------------------------------
-      - name: Check version difference
-        run: |
-          if [ "$VERSION" = "$CURRENT_VERSION" ]; then
-            echo "SHOULD_RUN=false" >> $GITHUB_ENV
-            echo "✔ Versions match → pipeline will stop."
-          else
-            echo "SHOULD_RUN=true" >> $GITHUB_ENV
-            echo "✘ Versions differ → pipeline continues."
-          fi
-
-      # --------------------------------------------
-      # STEPS BELOW RUN ONLY IF VERSION CHANGED
-      # --------------------------------------------
-
-      - name: Create branch
-        if: env.SHOULD_RUN == 'true'
-        run: |
-          BRANCH="sync-version-v${VERSION}"
-          echo "BRANCH=$BRANCH" >> $GITHUB_ENV
+          BRANCH="release-v${VERSION}"
           git checkout -b "$BRANCH"
+          echo "BRANCH=$BRANCH" >> $GITHUB_ENV
 
-      - name: Update composer.json
-        if: env.SHOULD_RUN == 'true'
+      - name: Update composer.json version
         run: |
-          jq ".version = \"$VERSION\"" composer.json > tmp.json
-          mv tmp.json composer.json
+          jq --arg v "$VERSION" \
+            '.version = $v' composer.json > composer.tmp.json
+          mv composer.tmp.json composer.json
 
-      - name: Commit and push changes
-        if: env.SHOULD_RUN == 'true'
+      - name: Commit & push
         run: |
-          git config user.name "GitHub Actions Bot"
-          git config user.email "ci-bot@github.com"
+          git config user.name "srkdev404-cyber"
+          git config user.email "srkdev404@gmail.com"
+
           git add composer.json
-          git commit -m "chore: sync version to v${VERSION}"
+          git commit -m "chore: bump version to v${VERSION}"
           git push origin "$BRANCH"
 
       - name: Create Pull Request
-        if: env.SHOULD_RUN == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.PAT }}
         run: |
           gh pr create \
             --base master \
             --head "$BRANCH" \
-            --title "Sync version to v${VERSION}" \
-            --body "Auto-synced version update."
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            --title "Release v${VERSION}" \
+            --body "Automated version bump to v${VERSION}"
