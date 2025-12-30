@@ -14,7 +14,6 @@ Either run
 ```
 php composer.phar require --prefer-dist froala/yii2-froala-editor
 ```
-
 or add
 
 ```
