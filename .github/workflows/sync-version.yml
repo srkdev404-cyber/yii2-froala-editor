@@ -15,7 +15,7 @@ jobs:
 
     steps:
       # ----------------------------------
-      # Checkout Child-D repo (FIXED)
+      # Checkout repository
       # ----------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -23,12 +23,12 @@ jobs:
           token: ${{ secrets.PAT }}
 
       # ----------------------------------
-      # Load version from dispatch payload
+      # Load version & release notes
       # ----------------------------------
-      - name: Load version
+      - name: Load payload
         run: |
-          VERSION="${{ github.event.client_payload.version }}"
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "VERSION=${{ github.event.client_payload.version }}" >> $GITHUB_ENV
+          echo "${{ github.event.client_payload.release_notes }}" > release_notes.txt
           echo "Incoming version: $VERSION"
 
       # ----------------------------------
@@ -37,7 +37,7 @@ jobs:
       - name: Create release branch
         run: |
           BRANCH="release-v${VERSION}"
-          git checkout -b "$BRANCH"
+          git checkout -B "$BRANCH"
           echo "BRANCH=$BRANCH" >> $GITHUB_ENV
 
       # ----------------------------------
@@ -56,12 +56,12 @@ jobs:
           git config user.name "srkdev404-cyber"
           git config user.email "srkdev404@gmail.com"
 
-          git add composer.json
-          git commit -m "chore: bump version to v${VERSION}"
-          git push origin "$BRANCH"
+          git add composer.json release_notes.txt
+          git commit -m "chore: release yii2-froala-editor v${VERSION}"
+          git push origin "$BRANCH" --force
 
       # ----------------------------------
-      # Create PR
+      # Create Pull Request
       # ----------------------------------
       - name: Create Pull Request
         env:
@@ -71,4 +71,4 @@ jobs:
             --base master \
             --head "$BRANCH" \
             --title "Release v${VERSION}" \
-            --body "Automated composer.json version bump to v${VERSION}"
+            --body "release: yes"
