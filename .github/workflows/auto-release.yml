@@ -8,7 +8,6 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
 
 jobs:
   release:
@@ -17,6 +16,9 @@ jobs:
     environment: PAT
 
     steps:
+      # ----------------------------------
+      # Require "release: yes"
+      # ----------------------------------
       - name: Check release intent
         id: check
         uses: actions/github-script@v6
@@ -35,21 +37,37 @@ jobs:
         if: steps.check.outputs.release == 'false'
         run: exit 0
 
-      - name: Checkout
+      # ----------------------------------
+      # Checkout merged code
+      # ----------------------------------
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.PAT }}
 
-      - name: Read version from composer.json
+      # ----------------------------------
+      # Read version from composer.json
+      # ----------------------------------
+      - name: Read version
         run: |
           VERSION=$(jq -r '.version' composer.json)
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
 
+          if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
+            echo "Version not found in composer.json"
+            exit 1
+          fi
+
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Version: $VERSION"
+
+      # ----------------------------------
+      # Create GitHub Release (NO auto notes)
+      # ----------------------------------
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: "v${{ env.VERSION }}"
           name: "Yii2 Froala Editor v${{ env.VERSION }}"
-          generate_release_notes: true
+          body_path: release_notes.txt
         env:
           GITHUB_TOKEN: ${{ secrets.PAT }}
