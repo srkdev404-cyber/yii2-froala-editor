@@ -1,0 +1,2 @@
+**Deleted hello,txt from js**
+Testing child-D
