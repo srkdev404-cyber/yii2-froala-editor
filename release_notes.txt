@@ -1,2 +1,2 @@
 Hello Celestial!
-Update hello.txt in JSS for testing
+Added new file in to JS folder for test purpose.
