@@ -1,2 +1,2 @@
-- Hello Celestial!
-- Made changes to css folder by creating a ehllo.txt file
+Hello Celestial!
+Update hello.txt in JSS for testing
