@@ -1,2 +1,2 @@
-**Deleted hello,txt from js**
-Testing child-D
+- Hello Celestial!
+- Made changes to css folder by creating a ehllo.txt file
