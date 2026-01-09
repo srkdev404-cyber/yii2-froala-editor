@@ -1,2 +1,2 @@
-1. **Hello celestial!
-2. Updated dispatch event to child - E**
+Hello Celestial!
+Modified JS release
