@@ -11,64 +11,83 @@ permissions:
 jobs:
   sync:
     runs-on: ubuntu-latest
-    environment: PAT
 
     steps:
-      # ----------------------------------
+      # --------------------------------------------
       # Checkout repository
-      # ----------------------------------
+      # --------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.PAT }}
+          fetch-depth: 0
 
-      # ----------------------------------
-      # Load version & release notes
-      # ----------------------------------
-      - name: Load payload
+      # --------------------------------------------
+      # Load & validate version
+      # --------------------------------------------
+      - name: Load & validate version
         run: |
-          echo "VERSION=${{ github.event.client_payload.version }}" >> $GITHUB_ENV
-          echo "${{ github.event.client_payload.release_notes }}" > release_notes.txt
-          echo "Incoming version: $VERSION"
+          VERSION="${{ github.event.client_payload.version }}"
+          VERSION="${VERSION//,/\.}"
 
-      # ----------------------------------
-      # Create release branch
-      # ----------------------------------
-      - name: Create release branch
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid version format: $VERSION"
+            exit 1
+          fi
+
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Dispatching version $VERSION"
+
+      # --------------------------------------------
+      # Prepare release branch
+      # --------------------------------------------
+      - name: Prepare release branch
         run: |
           BRANCH="release-v${VERSION}"
-          git checkout -B "$BRANCH"
           echo "BRANCH=$BRANCH" >> $GITHUB_ENV
 
-      # ----------------------------------
+          git fetch origin
+
+          if git ls-remote --heads origin "$BRANCH" | grep -q "$BRANCH"; then
+            git checkout "$BRANCH"
+            git pull origin "$BRANCH"
+          else
+            git checkout -b "$BRANCH"
+          fi
+
+      # --------------------------------------------
       # Update composer.json version
-      # ----------------------------------
+      # --------------------------------------------
       - name: Update composer.json
         run: |
           jq --arg v "$VERSION" '.version = $v' composer.json > composer.tmp
           mv composer.tmp composer.json
 
-      # ----------------------------------
-      # Commit & push changes
-      # ----------------------------------
-      - name: Commit and push
+      # --------------------------------------------
+      # Commit & push
+      # --------------------------------------------
+      - name: Commit & push
         run: |
           git config user.name "srkdev404-cyber"
           git config user.email "srkdev404@gmail.com"
 
-          git add composer.json release_notes.txt
-          git commit -m "chore: release yii2-froala-editor v${VERSION}"
-          git push origin "$BRANCH" --force
+          git add composer.json
+          git commit -m "chore: release yii2-froala-editor v${VERSION}" || echo "Nothing to commit"
+          git push origin "$BRANCH"
 
-      # ----------------------------------
-      # Create Pull Request
-      # ----------------------------------
+      # --------------------------------------------
+      # Create Pull Request (YAML-SAFE)
+      # --------------------------------------------
       - name: Create Pull Request
         env:
           GH_TOKEN: ${{ secrets.PAT }}
+          RELEASE_NOTES: ${{ github.event.client_payload.release_notes }}
         run: |
+          PR_BODY=$(printf "release: yes\n\n## Release Notes (from primary repo)\n\n%s\n" "$RELEASE_NOTES")
+
           gh pr create \
             --base master \
             --head "$BRANCH" \
             --title "Release v${VERSION}" \
-            --body "release: yes"
+            --body "$PR_BODY" \
+            || echo "Pull request already exists"
