@@ -74,6 +74,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.PAT }}
         run: |
-          gh release create "yii2-v${VERSION}" \
-            --title "Yii2 Froala Editor v${VERSION}" \
+          gh release create "v${VERSION}" \
+            --title "Release ${VERSION}" \
             --notes "${{ github.event.pull_request.body }}"
