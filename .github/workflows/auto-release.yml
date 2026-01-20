@@ -1,44 +1,39 @@
 name: Auto Release – yii2-froala-editor
 
 on:
-  pull_request:
-    types: [closed]
-    branches:
-      - master
+  repository_dispatch:
+    types: [version_update]
 
 permissions:
   contents: write
 
 jobs:
   release:
-    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
     steps:
       # --------------------------------------------
-      # Check release intent from PR title/body
+      # Load version & release notes from primary repo
       # --------------------------------------------
-      - name: Check release intent
-        id: check
-        uses: actions/github-script@v6
-        with:
-          github-token: ${{ secrets.PAT }}
-          script: |
-            const title = context.payload.pull_request.title || '';
-            const body  = context.payload.pull_request.body || '';
-            const text  = `${title} ${body}`;
+      - name: Load version & release notes
+        run: |
+          VERSION="${{ github.event.client_payload.version }}"
+          NOTES="${{ github.event.client_payload.release_notes }}"
 
-            core.setOutput(
-              'release',
-              /release:\s*yes/i.test(text) ? 'true' : 'false'
-            );
+          VERSION="${VERSION//,/\.}"
 
-      - name: Stop if not a release PR
-        if: steps.check.outputs.release == 'false'
-        run: exit 0
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid version format: $VERSION"
+            exit 1
+          fi
+
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "RELEASE_NOTES<<EOF" >> $GITHUB_ENV
+          echo "$NOTES" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
 
       # --------------------------------------------
-      # Checkout merged code (full history)
+      # Checkout repository
       # --------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -47,28 +42,28 @@ jobs:
           fetch-depth: 0
 
       # --------------------------------------------
-      # Read & validate version from composer.json
+      # Validate composer.json version (safety check)
       # --------------------------------------------
-      - name: Read & validate version
+      - name: Validate composer.json version
         run: |
-          VERSION=$(jq -r '.version' composer.json)
-          VERSION="${VERSION//,/\.}"
+          COMPOSER_VERSION=$(jq -r '.version' composer.json)
 
-          if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
+          if [ -z "$COMPOSER_VERSION" ] || [ "$COMPOSER_VERSION" = "null" ]; then
             echo "Version not found in composer.json"
             exit 1
           fi
 
-          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "Invalid version format: $VERSION"
+          if [ "$COMPOSER_VERSION" != "$VERSION" ]; then
+            echo "Version mismatch!"
+            echo "Primary repo: $VERSION"
+            echo "composer.json: $COMPOSER_VERSION"
             exit 1
           fi
 
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "Resolved version: $VERSION"
+          echo "composer.json version validated: $COMPOSER_VERSION"
 
       # --------------------------------------------
-      # Create GitHub Release (PR body → release notes)
+      # Create GitHub Release (PRIMARY NOTES ONLY)
       # --------------------------------------------
       - name: Create GitHub Release
         env:
@@ -76,4 +71,5 @@ jobs:
         run: |
           gh release create "v${VERSION}" \
             --title "Release ${VERSION}" \
-            --notes "${{ github.event.pull_request.body }}"
+            --notes "$RELEASE_NOTES" \
+            --generate-notes=false
