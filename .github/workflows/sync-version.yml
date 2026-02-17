@@ -1,4 +1,4 @@
-name: Sync Version – yii2-froala-editor
+name: Sync Version – Yii2-editor
 
 on:
   repository_dispatch:
@@ -23,20 +23,47 @@ jobs:
           fetch-depth: 0
 
       # --------------------------------------------
-      # Load & validate version
+      # Load & validate version (from primary repo)
       # --------------------------------------------
       - name: Load & validate version
         run: |
           VERSION="${{ github.event.client_payload.version }}"
           VERSION="${VERSION//,/\.}"
 
+          if [ -z "$VERSION" ]; then
+            echo "❌ Version missing in dispatch payload"
+            exit 1
+          fi
+
           if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "Invalid version format: $VERSION"
+            echo "❌ Invalid version format: $VERSION"
             exit 1
           fi
 
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "Dispatching version $VERSION"
+
+      # --------------------------------------------
+      # Compare current version vs incoming version
+      # --------------------------------------------
+      - name: Compare current version
+        run: |
+          CURRENT_VERSION=$(jq -r '.version' composer.json)
+
+          if [ -z "$CURRENT_VERSION" ] || [ "$CURRENT_VERSION" = "null" ]; then
+            echo "❌ Unable to determine current version from composer.json"
+            exit 1
+          fi
+
+          echo "📦 Current version : $CURRENT_VERSION"
+          echo "🚀 Incoming version: $VERSION"
+
+          if [ "$CURRENT_VERSION" = "$VERSION" ]; then
+            echo "⛔ Versions are identical. Denying PR creation."
+            exit 0
+          fi
+
+          echo "✅ Version change detected. Proceeding."
 
       # --------------------------------------------
       # Prepare release branch
@@ -60,8 +87,8 @@ jobs:
       # --------------------------------------------
       - name: Update composer.json
         run: |
-          jq --arg v "$VERSION" '.version = $v' composer.json > composer.tmp
-          mv composer.tmp composer.json
+          jq ".version = \"$VERSION\"" composer.json > tmp.json
+          mv tmp.json composer.json
 
       # --------------------------------------------
       # Commit & push
@@ -69,21 +96,30 @@ jobs:
       - name: Commit & push
         run: |
           git config user.name "srkdev404-cyber"
-          git config user.email "srkdev404@gmail.com"
+          git config user.email "srkdev404@.com"
 
           git add composer.json
-          git commit -m "chore: release yii2-froala-editor v${VERSION}" || echo "Nothing to commit"
+          git commit -m "chore: release PHP SDK v${VERSION}" || echo "Nothing to commit"
           git push origin "$BRANCH"
 
       # --------------------------------------------
-      # Create Pull Request (YAML-SAFE)
+      # Create Pull Request 
       # --------------------------------------------
       - name: Create Pull Request
         env:
           GH_TOKEN: ${{ secrets.PAT }}
           RELEASE_NOTES: ${{ github.event.client_payload.release_notes }}
         run: |
-          PR_BODY=$(printf "release: yes\n\n## Release Notes (from primary repo)\n\n%s\n" "$RELEASE_NOTES")
+          git fetch origin master
+
+          if git diff --quiet origin/master..."$BRANCH"; then
+            echo "ℹ️ No commits between $BRANCH and master. Skipping PR creation."
+            exit 0
+          fi
+
+          PR_BODY=$(printf \
+            "release: yes\n\n## Release Notes (from primary repo)\n\n%s\n" \
+            "$RELEASE_NOTES")
 
           gh pr create \
             --base master \
